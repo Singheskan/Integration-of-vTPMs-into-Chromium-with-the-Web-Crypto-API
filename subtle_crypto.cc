@@ -507,7 +507,7 @@ ScriptPromise SubtleCrypto::generateKey(
      TPM2B_CREATION_DATA**, TPM2B_DIGEST**, TPMT_TK_CREATION**))dlsym(handle,
                                                               "Esys_Create");
 
-    r = (*Esys_Create)(ctx, parent_handle, ESYS_TR_PASSWORD, ESYS_TR_NONE,
+    r = (*Esys_Create)(ctx, parent, ESYS_TR_PASSWORD, ESYS_TR_NONE,
                        ESYS_TR_NONE, &primarySensitive, &primaryTemplate, &allOutsideInfo,
                        &allCreationPCR, &keyPrivate, &keyPublic, NULL, NULL,
                        NULL);
@@ -538,7 +538,8 @@ ScriptPromise SubtleCrypto::generateKey(
                                      .hierarchy = TPM2_RH_NULL,
                                      .digest {.size = 0 }};
     TPMT_SIG_SCHEME inScheme = { .scheme = TPM2_ALG_ECDSA };
-    TPM2B_DIGEST digest = { .size = 0  }; // SHA_DIGEST_LENGTH
+    inScheme.details.ecdsa.hashAlg = TPM2_ALG_SHA1;
+    TPM2B_DIGEST digest = { .size = SHA_DIGEST_LENGTH  }; // boringssl/.../sha.ha
     TPMT_SIGNATURE *sig = NULL;
 
         TSS2_RC(*Esys_Sign)
@@ -549,7 +550,7 @@ ScriptPromise SubtleCrypto::generateKey(
      const TPM2B_DIGEST*, const TPMT_SIG_SCHEME*, const TPMT_TK_HASHCHECK*,
     TPMT_SIGNATURE*))dlsym(handle, "Esys_Sign");
 
-    r = (*Esys_Sign)(ctx, parent_handle, ESYS_TR_PASSWORD, ESYS_TR_NONE,
+    r = (*Esys_Sign)(ctx, parent, ESYS_TR_PASSWORD, ESYS_TR_NONE,
                               ESYS_TR_NONE, &digest, &inScheme,
                               &validation, sig);
 
