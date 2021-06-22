@@ -45,6 +45,7 @@
 #include "third_party/tpm/tpm2-tss/include/tss2/tss2_esys.h"
 #include "third_party/tpm/tpm2-tss/include/tss2/tss2_fapi.h"
 #include "third_party/tpm/tpm2-tss/include/tss2/tss2_rc.h"
+#include "third_party/boringssl/src/include/openssl/sha.h"
 
 
 #define ENGINE_HASH_ALG TPM2_ALG_SHA256
@@ -82,6 +83,53 @@
          }} \
      } \
 }
+
+#define TPM2B_PUBLIC_PRIMARY_RSAPSS_TEMPLATE { \
+        .size = 0, \
+        .publicArea = { \
+            .type = TPM2_ALG_RSA, \
+            .nameAlg = TPM2_ALG_SHA256, \
+            .objectAttributes = (TPMA_OBJECT_USERWITHAUTH | \
+                                 TPMA_OBJECT_SIGN_ENCRYPT  | \
+                                 TPMA_OBJECT_FIXEDTPM | \
+                                 TPMA_OBJECT_FIXEDPARENT | \
+                                 TPMA_OBJECT_SENSITIVEDATAORIGIN), \
+            .authPolicy = { \
+                 .size = 0, \
+             }, \
+            .parameters{ \
+                .rsaDetail = { \
+                 .symmetric = { \
+                     .algorithm = TPM2_ALG_NULL, \
+                     .keyBits{.aes = 128}, \
+                     .mode{.aes = TPM2_ALG_CFB}, \
+                 }, \
+                 .scheme = { \
+                      .scheme = TPM2_ALG_RSAPSS, \
+                      .details = { \
+                          .rsapss = { .hashAlg = TPM2_ALG_SHA256 } \
+                      } \
+                  }, \
+                 .keyBits = 2048, \
+                 .exponent = 0, \
+             }}, \
+            .unique{.rsa{ \
+             .size = 0, \
+             .buffer = {}, \
+         }} \
+        }, \
+}
+// .scheme = TPM2_ALG_NULL
+#define DUMMY_RSA_DECRYPT { .scheme = TPM2_ALG_RSAPSS }
+
+#define DUMMY_TPMT_SIGNATURE { \
+        .sigAlg = TPM2_ALG_RSAPSS, \
+        .signature = { \
+            .rsapss = { \
+                 .hash = TPM2_ALG_SHA1, .sig= {0} \
+             } \
+        } \
+    };
 
 namespace blink {
 

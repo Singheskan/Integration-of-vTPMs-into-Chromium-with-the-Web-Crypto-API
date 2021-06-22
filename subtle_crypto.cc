@@ -417,7 +417,7 @@ ScriptPromise SubtleCrypto::generateKey(
     ESYS_TR parent_handle = ESYS_TR_RH_OWNER;
     ESYS_TR parent = ESYS_TR_NONE;
     //static TPM2B_PUBLIC primaryEccTemplate = TPM2B_PUBLIC_PRIMARY_ECC_TEMPLATE;
-    static TPM2B_PUBLIC primaryTemplate = TPM2B_PUBLIC_PRIMARY_RSA_TEMPLATE;
+    static TPM2B_PUBLIC primaryTemplate = TPM2B_PUBLIC_PRIMARY_RSAPSS_TEMPLATE;
     // often also defined as inSensitive
     static TPM2B_SENSITIVE_CREATE primarySensitive = {.sensitive = {.userAuth =
                                                             {
