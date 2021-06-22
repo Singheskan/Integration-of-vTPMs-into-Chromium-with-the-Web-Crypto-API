@@ -93,6 +93,7 @@
                                  TPMA_OBJECT_SIGN_ENCRYPT  | \
                                  TPMA_OBJECT_FIXEDTPM | \
                                  TPMA_OBJECT_FIXEDPARENT | \
+                                 TPMA_OBJECT_NODA | \
                                  TPMA_OBJECT_SENSITIVEDATAORIGIN), \
             .authPolicy = { \
                  .size = 0, \

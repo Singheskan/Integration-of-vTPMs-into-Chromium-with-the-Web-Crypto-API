@@ -419,15 +419,24 @@ ScriptPromise SubtleCrypto::generateKey(
     //static TPM2B_PUBLIC primaryEccTemplate = TPM2B_PUBLIC_PRIMARY_ECC_TEMPLATE;
     static TPM2B_PUBLIC primaryTemplate = TPM2B_PUBLIC_PRIMARY_RSAPSS_TEMPLATE;
     // often also defined as inSensitive
-    static TPM2B_SENSITIVE_CREATE primarySensitive = {.sensitive = {.userAuth =
-                                                            {
-                                                                .size = 0,
-                                                            },
-                                                        .data = {
-                                                            .size = 0,
-                                                        }}};
+    TPM2B_AUTH authValuePrimary = {
+            .size = 5,
+            .buffer = {1, 2, 3, 4, 5}
+        };
+
+    TPM2B_SENSITIVE_CREATE primarySensitive = {
+        .size = 0,
+        .sensitive = {
+            .userAuth = authValuePrimary,
+            .data = {
+                 .size = 0,
+                 .buffer = {0},
+             },
+        },
+    };
     static TPM2B_DATA allOutsideInfo = {
         .size = 0,
+        .buffer = {},
     };
 
     static TPML_PCR_SELECTION allCreationPCR = {
@@ -535,10 +544,10 @@ ScriptPromise SubtleCrypto::generateKey(
     std::cout << "------------- Sign\n";
 
     TPMT_TK_HASHCHECK validation = { .tag = TPM2_ST_HASHCHECK,
-                                     .hierarchy = TPM2_RH_NULL,
+                                     .hierarchy = TPM2_RH_OWNER, // TPM2_RH_NULL
                                      .digest {.size = 0 }};
-    TPMT_SIG_SCHEME inScheme = { .scheme = TPM2_ALG_RSAPSS, .details = {.rsapss = {.hashAlg = TPM2_ALG_SHA256}}};
-    TPM2B_DIGEST digest = { .size = SHA256_DIGEST_LENGTH  }; // boringssl/.../sha.ha
+    TPMT_SIG_SCHEME inScheme = {.scheme = TPM2_ALG_NULL};
+    TPM2B_DIGEST digest = { .size = SHA256_DIGEST_LENGTH }; // boringssl/.../sha.ha
     TPMT_SIGNATURE *sig = NULL;
 
         TSS2_RC(*Esys_Sign)
