@@ -47,15 +47,41 @@
 #include "third_party/tpm/tpm2-tss/include/tss2/tss2_rc.h"
 #include "third_party/boringssl/src/include/openssl/sha.h"
 
+#define DUMMY_TPMT_TK_VERIFIED { .tag = TPM2_ST_VERIFIED , .hierarchy = TPM2_RH_OWNER, .digest = {0} }
 
 #define ENGINE_HASH_ALG TPM2_ALG_SHA256
 
+#define TPM2B_PUBLIC_ECC { \
+        .size = 0, \
+        .publicArea = { \
+            .type = TPM2_ALG_ECC, \
+            .nameAlg = TPM2_ALG_SHA256, \
+            .objectAttributes = (TPMA_OBJECT_USERWITHAUTH | \
+                                 TPMA_OBJECT_SIGN_ENCRYPT | \
+                                 TPMA_OBJECT_NODA | \
+                                 TPMA_OBJECT_FIXEDTPM | \
+                                 TPMA_OBJECT_FIXEDPARENT | \
+                                 TPMA_OBJECT_SENSITIVEDATAORIGIN), \
+            .authPolicy = { \
+                .size = 0, \
+            }, \
+            .parameters{.eccDetail = {.symmetric = { \
+                                         .algorithm = TPM2_ALG_NULL, \
+                                         .keyBits{.aes = 256}, \
+                                         .mode{.aes = TPM2_ALG_CFB}, \
+                                     }, \
+                                     .scheme = {.scheme = TPM2_ALG_ECDSA, .details = {.ecdsa = {.hashAlg = TPM2_ALG_SHA256}}}, \
+                                     .curveID = TPM2_ECC_NIST_P256, \
+                                     .kdf = {.scheme = TPM2_ALG_NULL, .details = {}}}}, \
+            .unique{.ecc = {.x = {.size = 0, .buffer = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60}}, .y = {.size = 0, .buffer = {}}}}, \
+        }};
+
+// for encryption
 #define TPM2B_PUBLIC_PRIMARY_RSA_TEMPLATE { \
     .publicArea = { \
         .type = TPM2_ALG_RSA, \
         .nameAlg = ENGINE_HASH_ALG, \
         .objectAttributes = (TPMA_OBJECT_USERWITHAUTH | \
-                             TPMA_OBJECT_RESTRICTED | \
                              TPMA_OBJECT_DECRYPT | \
                              TPMA_OBJECT_NODA | \
                              TPMA_OBJECT_FIXEDTPM | \
@@ -67,7 +93,7 @@
         .parameters{ \
           .rsaDetail = { \
              .symmetric = { \
-                 .algorithm = TPM2_ALG_AES, \
+                 .algorithm = TPM2_ALG_NULL, \
                  .keyBits{.aes = 128}, \
                  .mode{.aes = TPM2_ALG_CFB}, \
               }, \
@@ -84,6 +110,7 @@
      } \
 }
 
+// for signing
 #define TPM2B_PUBLIC_PRIMARY_RSAPSS_TEMPLATE { \
         .size = 0, \
         .publicArea = { \

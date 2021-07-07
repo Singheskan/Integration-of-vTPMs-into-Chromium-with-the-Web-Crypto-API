@@ -355,34 +355,55 @@ ScriptPromise SubtleCrypto::generateKey(
     fprintf(stderr, "%s\n", dlerror());
     abort();
   }
-  std::cout << "------------- handle not null \n";
+  printf("------------- handle not null \n");
 
   TSS2_RC r;
   ESYS_CONTEXT* ctx;
 
-  TSS2_RC(*Esys_Initialize)
-  (ESYS_CONTEXT**, TSS2_TCTI_CONTEXT*, TSS2_ABI_VERSION*) =
-      (TSS2_RC(*)(ESYS_CONTEXT**, TSS2_TCTI_CONTEXT*, TSS2_ABI_VERSION*))dlsym(
-          handle, "Esys_Initialize");
+  /*TSS2_RC Esys_Initialize 	( 	ESYS_CONTEXT **  	esys_context,
+		TSS2_TCTI_CONTEXT *  	tcti,
+		TSS2_ABI_VERSION *  	abiVersion 
+	) 	*/
+  TSS2_RC(*Esys_Initialize)(ESYS_CONTEXT**, TSS2_TCTI_CONTEXT*, TSS2_ABI_VERSION*) =
+  (TSS2_RC(*)(ESYS_CONTEXT**, TSS2_TCTI_CONTEXT*, TSS2_ABI_VERSION*))dlsym(handle, "Esys_Initialize");
   r = (*Esys_Initialize)(&ctx, NULL, NULL);
   if (r != TSS2_RC_SUCCESS) {
     printf("\nError: Esys_Initialize\n");
     abort();
   }
-  std::cout << "------------- init done \n";
+  printf("------------- init done \n");
+
+  /*TSS2_RC Esys_SelfTest 	( 	ESYS_CONTEXT *  	esysContext,
+		ESYS_TR  	shandle1,
+		ESYS_TR  	shandle2,
+		ESYS_TR  	shandle3,
+		TPMI_YES_NO  	fullTest 
+	) 	*/
+  TSS2_RC(*Esys_SelfTest) (ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, TPMI_YES_NO) = 
+  (TSS2_RC(*)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, TPMI_YES_NO))dlsym(handle, "Esys_SelfTest");
+  r = (*Esys_SelfTest)(ctx, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, true);
+  if (r != TSS2_RC_SUCCESS) {
+    printf("\nError: Esys_SelfTest\n");
+    abort();
+  }
+  printf("------------- TPM Full SelfTest done \n");
 
   // Erstelle function pointer "Esys_GetRandom" der ein TSS2_RC zurückliefert
   // und als Paramter ein ESYS_CONTEXT Pointer nimmt.
   // Zuweisung zu einem dlsym void pointer, der zum gleichen Rückgabewert und
   // Typ gecastet wird.
-  std::cout << "------------- start getrandom \n";
+  printf("------------- start getrandom \n");
   TPM2B_DIGEST* random_bytes;
-  TSS2_RC(*Esys_GetRandom)
-  (ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, UINT16, TPM2B_DIGEST**) =
-      (TSS2_RC(*)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, UINT16,
-                  TPM2B_DIGEST**))dlsym(handle, "Esys_GetRandom");
-  r = (*Esys_GetRandom)(ctx, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, 20,
-                        &random_bytes);
+  /*TSS2_RC Esys_GetRandom 	( 	ESYS_CONTEXT *  	esysContext,
+  ESYS_TR  	shandle1,
+  ESYS_TR  	shandle2,
+  ESYS_TR  	shandle3,
+  UINT16  	bytesRequested,
+  TPM2B_DIGEST **  	randomBytes 
+) 	*/
+  TSS2_RC(*Esys_GetRandom)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, UINT16, TPM2B_DIGEST**) =
+  (TSS2_RC(*)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, UINT16,TPM2B_DIGEST**))dlsym(handle, "Esys_GetRandom");
+  r = (*Esys_GetRandom)(ctx, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, 20, &random_bytes);
   if (r != TSS2_RC_SUCCESS) {
     printf("\nError: Esys_GetRandom\nError:%s\n", strerror(errno));
     abort();
@@ -400,6 +421,7 @@ ScriptPromise SubtleCrypto::generateKey(
     fprintf(stderr, "%s\n", dlerror());
     abort();
   }
+  
 
   /* What I want to do (using tpm2-tools instructions):
     1. tpm2_createprimary --hierarchy o --out-context pri.ctx
@@ -412,213 +434,536 @@ ScriptPromise SubtleCrypto::generateKey(
     6. openssl dgst -verify sub-pub.der -keyform der sha1 -signature
     hash.plain msg.txt
   */
-  if (true) {
-    // Generate Key
-    ESYS_TR parent_handle = ESYS_TR_RH_OWNER;
-    ESYS_TR parent = ESYS_TR_NONE;
-    //static TPM2B_PUBLIC primaryEccTemplate = TPM2B_PUBLIC_PRIMARY_ECC_TEMPLATE;
-    static TPM2B_PUBLIC primaryTemplate = TPM2B_PUBLIC_PRIMARY_RSAPSS_TEMPLATE;
-    // often also defined as inSensitive
-    TPM2B_AUTH authValuePrimary = {
-            .size = 5,
-            .buffer = {1, 2, 3, 4, 5}
-        };
 
-    TPM2B_SENSITIVE_CREATE primarySensitive = {
-        .size = 0,
-        .sensitive = {
-            .userAuth = authValuePrimary,
-            .data = {
-                 .size = 0,
-                 .buffer = {0},
-             },
+  // Generate Key
+  ESYS_TR parent = ESYS_TR_NONE;
+  TPM2B_PUBLIC *outPublic = NULL;
+
+  static TPM2B_PUBLIC inPublic = TPM2B_PUBLIC_ECC;
+  TPM2B_SENSITIVE_CREATE inSensitive = {
+    .size = 0,
+    .sensitive = {
+        .userAuth = {
+            .size = 0,
+            .buffer = {0},
         },
-    };
-    static TPM2B_DATA allOutsideInfo = {
-        .size = 0,
-        .buffer = {},
-    };
+        .data = {.size = 0, .buffer = {0}}}};
+  /*
+  data that will be included in the creation data for this 
+  object to provide permanent, verifiable linkage between 
+  this object and some object owner data
+  */
+  static TPM2B_DATA allOutsideInfo = {
+      .size = 0,
+      .buffer = {},
+  };
 
-    static TPML_PCR_SELECTION allCreationPCR = {
-        .count = 0,
-    };
-    // TPM2B_PUBLIC inPublic = keyTemplate;
+  static TPML_PCR_SELECTION allCreationPCR = {
+      .count = 0,
+  };
 
-    std::cout << "------------- Initialized Parameters for CreatePrimary\n";
-    std::cout << "------------- CreatePrimary\n";
-    /*TSS2_RC Esys_CreatePrimary 	( 	ESYS_CONTEXT *  	esysContext,
-		ESYS_TR  	primaryHandle,
-		ESYS_TR  	shandle1,
-		ESYS_TR  	shandle2,
-		ESYS_TR  	shandle3,
-		const TPM2B_SENSITIVE_CREATE *  	inSensitive,
-		const TPM2B_PUBLIC *  	inPublic,
-		const TPM2B_DATA *  	outsideInfo,
-		const TPML_PCR_SELECTION *  	creationPCR,
-		ESYS_TR *  	objectHandle,
-		TPM2B_PUBLIC **  	outPublic,
-		TPM2B_CREATION_DATA **  	creationData,
-		TPM2B_DIGEST **  	creationHash,
-		TPMT_TK_CREATION **  	creationTicket 
-	) 	*/
-    TSS2_RC(*Esys_CreatePrimary)
-    (ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
-     const TPM2B_SENSITIVE_CREATE*, const TPM2B_PUBLIC*, const TPM2B_DATA*,
-     const TPML_PCR_SELECTION*, ESYS_TR*, TPM2B_PUBLIC**,
-     TPM2B_CREATION_DATA**, TPM2B_DIGEST**, TPMT_TK_CREATION**) =
-        (TSS2_RC(*)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
-     const TPM2B_SENSITIVE_CREATE*, const TPM2B_PUBLIC*, const TPM2B_DATA*,
-     const TPML_PCR_SELECTION*, ESYS_TR*, TPM2B_PUBLIC**,
-     TPM2B_CREATION_DATA**, TPM2B_DIGEST**, TPMT_TK_CREATION**))dlsym(handle, "Esys_CreatePrimary");
+  /*TSS2_RC Esys_CreatePrimary 	( 	ESYS_CONTEXT *  	esysContext,
+  ESYS_TR  	primaryHandle,
+  ESYS_TR  	shandle1,
+  ESYS_TR  	shandle2,
+  ESYS_TR  	shandle3,
+  const TPM2B_SENSITIVE_CREATE *  	inSensitive,
+  const TPM2B_PUBLIC *  	inPublic,
+  const TPM2B_DATA *  	outsideInfo,
+  const TPML_PCR_SELECTION *  	creationPCR,
+  ESYS_TR *  	objectHandle,
+  TPM2B_PUBLIC **  	outPublic,
+  TPM2B_CREATION_DATA **  	creationData,
+  TPM2B_DIGEST **  	creationHash,
+  TPMT_TK_CREATION **  	creationTicket 
+) 	*/
 
-    r = (*Esys_CreatePrimary)(ctx, parent_handle, ESYS_TR_PASSWORD, ESYS_TR_NONE,
-                              ESYS_TR_NONE, &primarySensitive, &primaryTemplate,
-                              &allOutsideInfo, &allCreationPCR,
-                              &parent, NULL, NULL, NULL, NULL);
+  TPM2B_CREATION_DATA *creationData = NULL;
+  TPM2B_DIGEST *creationHash = NULL;
+  TPMT_TK_CREATION *creationTicket = NULL;
+  ESYS_TR parent_handle = ESYS_TR_RH_OWNER;
+  printf("------------- CreatePrimary for Sign\n");
+  TSS2_RC(*Esys_CreatePrimary)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
+    const TPM2B_SENSITIVE_CREATE*, const TPM2B_PUBLIC*, const TPM2B_DATA*,
+    const TPML_PCR_SELECTION*, ESYS_TR*, TPM2B_PUBLIC**,
+    TPM2B_CREATION_DATA**, TPM2B_DIGEST**, TPMT_TK_CREATION**) =
+      (TSS2_RC(*)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
+    const TPM2B_SENSITIVE_CREATE*, const TPM2B_PUBLIC*, const TPM2B_DATA*,
+    const TPML_PCR_SELECTION*, ESYS_TR*, TPM2B_PUBLIC**,
+    TPM2B_CREATION_DATA**, TPM2B_DIGEST**, TPMT_TK_CREATION**))dlsym(handle, "Esys_CreatePrimary");
 
-    if (r != TSS2_RC_SUCCESS) {
-      printf("\nError in Esys_CreatePrimary\nError:%s\n",
-             strerror(errno));
-      abort();
-    }
+  r = (*Esys_CreatePrimary)(ctx, parent_handle, ESYS_TR_PASSWORD, ESYS_TR_NONE,
+                            ESYS_TR_NONE, &inSensitive, &inPublic,
+                            &allOutsideInfo, &allCreationPCR,
+                            &parent, &outPublic, &creationData, &creationHash, &creationTicket); // outPublic was NULL
 
-    std::cout << "------------- CreatePrimary done\n";
-
-    TPM2B_PUBLIC *keyPublic = NULL;
-    TPM2B_PRIVATE *keyPrivate = NULL;
-
-    /*TSS2_RC Esys_Create 	( 	ESYS_CONTEXT *  	esysContext,
-		ESYS_TR  	parentHandle,
-		ESYS_TR  	shandle1,
-		ESYS_TR  	shandle2,
-		ESYS_TR  	shandle3,
-		const TPM2B_SENSITIVE_CREATE *  	inSensitive,
-		const TPM2B_PUBLIC *  	inPublic,
-		const TPM2B_DATA *  	outsideInfo,
-		const TPML_PCR_SELECTION *  	creationPCR,
-		TPM2B_PRIVATE **  	outPrivate,
-		TPM2B_PUBLIC **  	outPublic,
-		TPM2B_CREATION_DATA **  	creationData,
-		TPM2B_DIGEST **  	creationHash,
-		TPMT_TK_CREATION **  	creationTicket 
-	) 	*/
-
-    std::cout << "------------- Create\n";
-
-    TSS2_RC(*Esys_Create)
-    (ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
-     const TPM2B_SENSITIVE_CREATE*, const TPM2B_PUBLIC*, const TPM2B_DATA*,
-     const TPML_PCR_SELECTION*, TPM2B_PRIVATE**, TPM2B_PUBLIC**,
-     TPM2B_CREATION_DATA**, TPM2B_DIGEST**, TPMT_TK_CREATION**) =
-        (TSS2_RC(*)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
-     const TPM2B_SENSITIVE_CREATE*, const TPM2B_PUBLIC*, const TPM2B_DATA*,
-     const TPML_PCR_SELECTION*, TPM2B_PRIVATE**, TPM2B_PUBLIC**,
-     TPM2B_CREATION_DATA**, TPM2B_DIGEST**, TPMT_TK_CREATION**))dlsym(handle,
-                                                              "Esys_Create");
-
-    r = (*Esys_Create)(ctx, parent, ESYS_TR_PASSWORD, ESYS_TR_NONE,
-                       ESYS_TR_NONE, &primarySensitive, &primaryTemplate, &allOutsideInfo,
-                       &allCreationPCR, &keyPrivate, &keyPublic, NULL, NULL,
-                       NULL);
-
-    if (r != TSS2_RC_SUCCESS) {
-      printf("\nError in Esys_Create\nError:%s\n", strerror(errno));
-      abort();
-    }
-
-    std::cout << "------------- Create done\n";
-
-    //TODO: openssl dgst -sha1 -binary -out hash.bin msg.txt before calling esys_sign
-
-    /*TSS2_RC Esys_Sign 	( 	ESYS_CONTEXT *  	esysContext,
-		ESYS_TR  	keyHandle,
-		ESYS_TR  	shandle1,
-		ESYS_TR  	shandle2,
-		ESYS_TR  	shandle3,
-		const TPM2B_DIGEST *  	digest,
-		const TPMT_SIG_SCHEME *  	inScheme,
-		const TPMT_TK_HASHCHECK *  	validation,
-		TPMT_SIGNATURE **  	signature 
-	) 	*/
-
-    std::cout << "------------- Sign\n";
-
-    TPMT_TK_HASHCHECK validation = { .tag = TPM2_ST_HASHCHECK,
-                                     .hierarchy = TPM2_RH_OWNER, // TPM2_RH_NULL
-                                     .digest {.size = 0 }};
-    TPMT_SIG_SCHEME inScheme = {.scheme = TPM2_ALG_NULL};
-    TPM2B_DIGEST digest = { .size = SHA256_DIGEST_LENGTH }; // boringssl/.../sha.ha
-    TPMT_SIGNATURE *sig = NULL;
-
-        TSS2_RC(*Esys_Sign)
-    (ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
-     const TPM2B_DIGEST*, const TPMT_SIG_SCHEME*, const TPMT_TK_HASHCHECK*,
-    TPMT_SIGNATURE*) =
-        (TSS2_RC(*)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
-     const TPM2B_DIGEST*, const TPMT_SIG_SCHEME*, const TPMT_TK_HASHCHECK*,
-    TPMT_SIGNATURE*))dlsym(handle, "Esys_Sign");
-
-    r = (*Esys_Sign)(ctx, parent, ESYS_TR_PASSWORD, ESYS_TR_NONE,
-                              ESYS_TR_NONE, &digest, &inScheme,
-                              &validation, sig);
-
-    if (r != TSS2_RC_SUCCESS) {
-      printf("\nError in Esys_Sign\nError:%s\n",
-             strerror(errno));
-      abort();
-    }
-
-    std::cout << "------------- Sign done\n";
-
-    // std::cout << "------------- Esys_TR_FromTPMPublic\n";
-
-    // designated initializer only work with c99 - rewrote tpm2engine example
-    // static TPM2B_PUBLIC keyTemplate = {
-    //     .publicArea = {
-    //         .type = TPM2_ALG_RSA,
-    //         .nameAlg = TPM2_ALG_SHA1,  // ENGINE_HASH_ALG
-    //         .objectAttributes =
-    //             (TPMA_OBJECT_USERWITHAUTH | TPMA_OBJECT_SIGN_ENCRYPT |
-    //              TPMA_OBJECT_DECRYPT | TPMA_OBJECT_FIXEDTPM |
-    //              TPMA_OBJECT_FIXEDPARENT | TPMA_OBJECT_SENSITIVEDATAORIGIN |
-    //              TPMA_OBJECT_NODA),
-    //         .authPolicy{.size = 0},  // e.g. .authPolicy.size=0 does not work
-    //         .parameters{
-    //             .rsaDetail =
-    //                 {
-    //                     .symmetric =
-    //                         {
-    //                             .algorithm = TPM2_ALG_NULL,
-    //                             .keyBits{.aes = 0},
-    //                             .mode{.aes = 0},
-    //                         },
-    //                     .scheme = {.scheme = TPM2_ALG_NULL, .details = {}},
-    //                     .keyBits = 0,  /* to be set by the genkey function */
-    //                     .exponent = 0, /* to be set by the genkey function */
-    //                 }},
-    //         .unique{.rsa{.size = 0}}}};
-
-    // ESYS_TR keyHandle = ESYS_TR_NONE;
-    // TPM2_DATA *tpm2Data = NULL;
-    // TPM2B_PUBLIC* keyPublic = NULL;
-    // TPM2B_PRIVATE* keyPrivate = NULL;
-    /*  TSS2_RC Esys_TR_FromTPMPublic ( ESYS_CONTEXT * esys_context, TPM2_HANDLE tpm_handle, ESYS_TR shandle1, 
-        ESYS_TR shandle2, ESYS_TR shandle3, ESYS_TR * object ) 	 */
-    // TSS2_RC(*Esys_TR_FromTPMPublic)
-    // (ESYS_CONTEXT*, TPM2_HANDLE, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR*) =
-    //     (TSS2_RC(*)(ESYS_CONTEXT*, TPM2_HANDLE, ESYS_TR, ESYS_TR, ESYS_TR,
-    //                 ESYS_TR*))dlsym(handle, "Esys_TR_FromTPMPublic");
-
-    // r = (*Esys_TR_FromTPMPublic)(ctx, parent_handle, ESYS_TR_NONE, ESYS_TR_NONE,
-    //                              ESYS_TR_NONE, &keyHandle);
-
-    // if (r != TSS2_RC_SUCCESS) {
-    //   printf("\nError in Esys_TR_FromTPMPublic\nError:%s\n", strerror(errno));
-    //   abort();
-    // }
-
-    // std::cout << "------------- Esys_TR_FromTPMPublic done \n";
+  if (r != TSS2_RC_SUCCESS) {
+    printf("\nError in Esys_CreatePrimary\nError:%s\n",
+            strerror(errno));
+    abort();
   }
+
+  printf("\nPublic Key:\nX = ");
+  for (int v = 0; v < (*outPublic).publicArea.unique.ecc.x.size; v++)
+  {
+      printf("%02x ", (*outPublic).publicArea.unique.ecc.x.buffer[v]);
+  }
+  printf("\nY = ");
+  for (int v = 0; v < (*outPublic).publicArea.unique.ecc.y.size; v++)
+  {
+      printf("%02x ", (*outPublic).publicArea.unique.ecc.y.buffer[v]);
+  }
+  printf("\n");    
+
+  printf("------------- CreatePrimary for Sign done\n");
+
+  /*TSS2_RC Esys_ReadPublic 	( 	ESYS_CONTEXT *  	esysContext,
+  ESYS_TR  	objectHandle,
+  ESYS_TR  	shandle1,
+  ESYS_TR  	shandle2,
+  ESYS_TR  	shandle3,
+  TPM2B_PUBLIC **  	outPublic,
+  TPM2B_NAME **  	name,
+  TPM2B_NAME **  	qualifiedName 
+  ) 	*/
+
+  printf("------------- ReadPublic\n");
+  TPM2B_NAME *nameKeySign = NULL;
+  TPM2B_NAME *keyQualifiedName = NULL;
+  TSS2_RC(*Esys_ReadPublic) (ESYS_CONTEXT *, ESYS_TR, ESYS_TR, ESYS_TR, 
+  ESYS_TR, TPM2B_PUBLIC **, TPM2B_NAME **, TPM2B_NAME **) = 
+  (TSS2_RC(*)(ESYS_CONTEXT *, ESYS_TR, ESYS_TR, ESYS_TR, 
+  ESYS_TR, TPM2B_PUBLIC **, TPM2B_NAME **, TPM2B_NAME **))dlsym(handle, "Esys_ReadPublic");
+
+  r = (*Esys_ReadPublic)(ctx, parent, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, &outPublic, &nameKeySign, &keyQualifiedName);
+
+  if (r != TSS2_RC_SUCCESS) {
+    printf("\nError in Esys_ReadPublic\nError:%s\n",
+            strerror(errno));
+    abort();
+  }
+
+  printf("------------- ReadPublic done\n");
+
+  /*TSS2_RC Esys_Sign 	( 	ESYS_CONTEXT *  	esysContext,
+  ESYS_TR  	keyHandle,
+  ESYS_TR  	shandle1,
+  ESYS_TR  	shandle2,
+  ESYS_TR  	shandle3,
+  const TPM2B_DIGEST *  	digest,
+  const TPMT_SIG_SCHEME *  	inScheme,
+  const TPMT_TK_HASHCHECK *  	validation,
+  TPMT_SIGNATURE **  	signature 
+) 	*/
+
+  printf("------------- Sign\n");
+
+  TPMT_SIG_SCHEME inScheme = {.scheme = TPM2_ALG_NULL}; // = TPM2_ALG_NULL
+  TPMT_TK_HASHCHECK hash_validation = { .tag = TPM2_ST_HASHCHECK,
+                                    .hierarchy = TPM2_RH_OWNER, // TPM2_RH_NULL || TPM2_RH_OWNER
+                                    .digest = {0}};
+  TPM2B_DIGEST digest = { .size = SHA256_DIGEST_LENGTH,
+    .buffer = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,11, 12, 13, 14, 15, 16, 17,
+                  18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32} }; // boringssl/.../sha.ha
+  TPMT_SIGNATURE *sig = NULL;
+
+  TSS2_RC(*Esys_Sign)
+  (ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
+    const TPM2B_DIGEST*, const TPMT_SIG_SCHEME*, const TPMT_TK_HASHCHECK*,
+  TPMT_SIGNATURE**) =
+  (TSS2_RC(*)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
+    const TPM2B_DIGEST*, const TPMT_SIG_SCHEME*, const TPMT_TK_HASHCHECK*,
+  TPMT_SIGNATURE**))dlsym(handle, "Esys_Sign");
+
+  r = (*Esys_Sign)(ctx, parent, ESYS_TR_PASSWORD, ESYS_TR_NONE,
+                            ESYS_TR_NONE, &digest, &inScheme,
+                            &hash_validation, &sig);
+
+  if (r != TSS2_RC_SUCCESS) {
+    printf("\nError in Esys_Sign\nError:%s\n",
+            strerror(errno));
+    abort();
+  }
+
+  printf("\nSignature:\nR = ");
+  for (int i = 0; i < (*sig).signature.ecdsa.signatureR.size; i++)
+  {
+      printf("%02x ", (*sig).signature.ecdsa.signatureR.buffer[i]);
+  }
+  printf("\nS = ");
+  for (int i = 0; i < (*sig).signature.ecdsa.signatureS.size; i++)
+  {
+      printf("%02x ", (*sig).signature.ecdsa.signatureS.buffer[i]);
+  }
+  printf("\n"); 
+
+  printf("------------- Sign done\n");
+
+  printf("------------- Verify\n");
+  TPMT_TK_VERIFIED *validation = NULL;
+  /*TSS2_RC Esys_VerifySignature 	( 	ESYS_CONTEXT *  	esysContext,
+  ESYS_TR  	keyHandle,
+  ESYS_TR  	shandle1,
+  ESYS_TR  	shandle2,
+  ESYS_TR  	shandle3,
+  const TPM2B_DIGEST *  	digest,
+  const TPMT_SIGNATURE *  	signature,
+  TPMT_TK_VERIFIED **  	validation 
+  ) 	*/
+  TSS2_RC(*Esys_VerifySignature) (ESYS_CONTEXT *, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR, 
+  const TPM2B_DIGEST *, const TPMT_SIGNATURE *, TPMT_TK_VERIFIED **) = 
+  (TSS2_RC(*)(ESYS_CONTEXT *, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR, 
+  const TPM2B_DIGEST *, const TPMT_SIGNATURE *, TPMT_TK_VERIFIED **))dlsym(handle, "Esys_VerifySignature");
+
+  r = (*Esys_VerifySignature)(ctx, parent, ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE, &digest, sig, &validation);
+
+  if (r != TSS2_RC_SUCCESS) {
+    printf("\nError in Esys_Verify\nError:%s\n",
+            strerror(errno));
+    abort();
+  }
+  printf("------------- Verify done\n");
+
+  /*TSS2_RC Esys_FlushContext 	( 	ESYS_CONTEXT *  	esysContext,
+      ESYS_TR  	flushHandle 
+    ) 	*/
+  TSS2_RC(*Esys_FlushContext) (ESYS_CONTEXT *, ESYS_TR) = 
+  (TSS2_RC(*)(ESYS_CONTEXT *, ESYS_TR))dlsym(handle, "Esys_FlushContext");
+  printf("------------- FlushContext\n");
+  r = Esys_FlushContext(ctx, parent);
+
+  if (r != TSS2_RC_SUCCESS) {
+    printf("\nError in FlushContext\nError:%s\n",
+            strerror(errno));
+    abort();
+  }
+  parent = ESYS_TR_NONE;
+  printf("------------- FlushContext done\n");
+// ------------------------ Test Encrypt Decrypt -----------------------------------------------------------------------------------
+
+//   ESYS_TR primaryHandle = ESYS_TR_NONE;
+//   ESYS_TR loadedKeyHandle = ESYS_TR_NONE;
+//   //int failure_return = EXIT_FAILURE;
+
+//   TPM2B_MAX_BUFFER *outData = NULL;
+//   TPM2B_IV *ivOut = NULL;
+
+//   TPM2B_PUBLIC *outPublic2 = NULL;
+//   TPM2B_PRIVATE *outPrivate2 = NULL;
+//   TPM2B_CREATION_DATA *creationData2 = NULL;
+//   TPM2B_DIGEST *creationHash2 = NULL;
+//   TPMT_TK_CREATION *creationTicket2 = NULL;
+//   // TPM2B_MAX_BUFFER *outData2 = NULL;
+//   // TPM2B_IV *ivOut2 = NULL;
+
+//   TPM2B_AUTH authValuePrimary = {
+//       .size = 5,
+//       .buffer = {1, 2, 3, 4, 5}
+//   };
+
+//   TPM2B_SENSITIVE_CREATE inSensitivePrimary = {
+//       .size = 0,
+//       .sensitive = {
+//           .userAuth = {
+//                 .size = 0,
+//                 .buffer = {0},
+//             },
+//           .data = {
+//                 .size = 0,
+//                 .buffer = {0},
+//             },
+//       },
+//   };
+
+//   inSensitivePrimary.sensitive.userAuth = authValuePrimary;
+
+//   // TPM2B_DATA outsideInfo = {
+//   //     .size = 0,
+//   //     .buffer = {},
+//   // };
+
+//   // TPML_PCR_SELECTION creationPCR = {
+//   //     .count = 0,
+//   // };
+
+//   // TPM2B_AUTH authValue = {
+//   //     .size = 0,
+//   //     .buffer = {}
+//   // };
+
+//   // r = Esys_CreatePrimary(ctx, ESYS_TR_RH_OWNER, ESYS_TR_PASSWORD,
+//   //                         ESYS_TR_NONE, ESYS_TR_NONE,
+//   //                         &inSensitivePrimary, &inPublic,
+//   //                         &outsideInfo, &creationPCR, &primaryHandle,
+//   //                         &outPublic, &creationData, &creationHash,
+//   //                         &creationTicket);
+
+//   // if (r != TSS2_RC_SUCCESS) {
+//   // printf("\nError in Encrypt Decrypt CreatePrimary\nError:%s\n",
+//   //         strerror(errno));
+//   // abort();
+//   // }
+  
+//   TPM2B_AUTH authKey2 = {
+//       .size = 6,
+//       .buffer = {6, 7, 8, 9, 10, 11}
+//   };
+
+//   TPM2B_SENSITIVE_CREATE inSensitive2 = {
+//       .size = 0,
+//       .sensitive = {
+//           .userAuth = {
+//                 .size = 0,
+//                 .buffer = {0}
+//             },
+//           .data = {
+//                 .size = 16,
+//                 .buffer = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16}
+//             }
+//       }
+//   };
+
+//   inSensitive2.sensitive.userAuth = authKey2;
+
+//   TPM2B_PUBLIC inPublic2 = {
+//       .size = 0,
+//       .publicArea = {
+//           .type = TPM2_ALG_SYMCIPHER,
+//           .nameAlg = TPM2_ALG_SHA256,
+//           .objectAttributes = (TPMA_OBJECT_USERWITHAUTH |
+//                                 TPMA_OBJECT_SIGN_ENCRYPT |
+//                                 TPMA_OBJECT_DECRYPT),
+
+//           .authPolicy = {
+//                 .size = 0,
+//             },
+//           .parameters{.symDetail = {
+//                 .sym = {
+//                     .algorithm = TPM2_ALG_AES,
+//                     .keyBits = {.aes = 128},
+//                     .mode = {.aes = TPM2_ALG_CFB}}
+//             }},
+//           .unique{.sym = {
+//                 .size = 0,
+//                 .buffer = {}
+//             }}
+//       }
+//   };
+
+//   TPM2B_DATA outsideInfo2 = {
+//       .size = 0,
+//       .buffer = {}
+//       ,
+//   };
+
+//   TPML_PCR_SELECTION creationPCR2 = {
+//       .count = 0,
+//   };
+
+//   /*TSS2_RC Esys_Create 	( 	ESYS_CONTEXT *  	esysContext,
+// 		ESYS_TR  	parentHandle,
+// 		ESYS_TR  	shandle1,
+// 		ESYS_TR  	shandle2,
+// 		ESYS_TR  	shandle3,
+// 		const TPM2B_SENSITIVE_CREATE *  	inSensitive,
+// 		const TPM2B_PUBLIC *  	inPublic,
+// 		const TPM2B_DATA *  	outsideInfo,
+// 		const TPML_PCR_SELECTION *  	creationPCR,
+// 		TPM2B_PRIVATE **  	outPrivate,
+// 		TPM2B_PUBLIC **  	outPublic,
+// 		TPM2B_CREATION_DATA **  	creationData,
+// 		TPM2B_DIGEST **  	creationHash,
+// 		TPMT_TK_CREATION **  	creationTicket 
+// 	) 	*/
+
+//   TSS2_RC(*Esys_Create)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
+//   const TPM2B_SENSITIVE_CREATE*, const TPM2B_PUBLIC*, const TPM2B_DATA*,
+//   const TPML_PCR_SELECTION*, TPM2B_PRIVATE **, TPM2B_PUBLIC **, TPM2B_CREATION_DATA **, TPM2B_DIGEST **, TPMT_TK_CREATION **) =
+//     (TSS2_RC(*)(ESYS_CONTEXT*, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR,
+//   const TPM2B_SENSITIVE_CREATE*, const TPM2B_PUBLIC*, const TPM2B_DATA*,
+//   const TPML_PCR_SELECTION*, TPM2B_PRIVATE **, TPM2B_PUBLIC **, TPM2B_CREATION_DATA **, TPM2B_DIGEST **, TPMT_TK_CREATION **))dlsym(handle, "Esys_Create");
+//   r = Esys_Create(ctx,
+//                   parent,
+//                   ESYS_TR_PASSWORD, ESYS_TR_NONE, ESYS_TR_NONE,
+//                   &inSensitive2,
+//                   &inPublic2,
+//                   &outsideInfo2,
+//                   &creationPCR2,
+//                   &outPrivate2,
+//                   &outPublic2,
+//                   &creationData2, &creationHash2, &creationTicket2);
+
+//   if (r != TSS2_RC_SUCCESS) {
+//     printf("\nError in Encrypt Decrypt Create\nError:%s\n",
+//             strerror(errno));
+//     abort();
+//   }
+
+//   /*TSS2_RC Esys_Load 	( 	ESYS_CONTEXT *  	esysContext,
+// 		ESYS_TR  	parentHandle,
+// 		ESYS_TR  	shandle1,
+// 		ESYS_TR  	shandle2,
+// 		ESYS_TR  	shandle3,
+// 		const TPM2B_PRIVATE *  	inPrivate,
+// 		const TPM2B_PUBLIC *  	inPublic,
+// 		ESYS_TR *  	objectHandle 
+// 	) 	*/
+//   TSS2_RC(*Esys_Load) (ESYS_CONTEXT *, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR, 
+//   const TPM2B_PRIVATE *, const TPM2B_PUBLIC *, ESYS_TR *) = 
+//   (TSS2_RC(*)(ESYS_CONTEXT *, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR, 
+//   const TPM2B_PRIVATE *, const TPM2B_PUBLIC *, ESYS_TR *))dlsym(handle, "Esys_Load");
+//   r = Esys_Load(ctx,
+//                 primaryHandle,
+//                 ESYS_TR_PASSWORD,
+//                 ESYS_TR_NONE,
+//                 ESYS_TR_NONE, outPrivate2, outPublic2, &loadedKeyHandle);
+
+//   if (r != TSS2_RC_SUCCESS) {
+//     printf("\nError in Encrypt Decrypt Load\nError:%s\n",
+//             strerror(errno));
+//     abort();
+//   }
+
+//   ESYS_TR keyHandle_handle = loadedKeyHandle;
+//   //TPMI_YES_NO decrypt = TPM2_YES;
+//   //TPMI_YES_NO encrypt = TPM2_NO;
+//   TPMI_ALG_CIPHER_MODE mode = TPM2_ALG_NULL;
+//   TPM2B_IV ivIn = {
+//       .size = 16,
+//       .buffer = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16}
+//   };
+//   TPM2B_MAX_BUFFER inData = {
+//       .size = 16,
+//       .buffer = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16}
+//   };
+  
+//   /*TSS2_RC Esys_EncryptDecrypt 	( 	ESYS_CONTEXT *  	esysContext,
+// 		ESYS_TR  	keyHandle,
+// 		ESYS_TR  	shandle1,
+// 		ESYS_TR  	shandle2,
+// 		ESYS_TR  	shandle3,
+// 		TPMI_YES_NO  	decrypt,
+// 		TPMI_ALG_CIPHER_MODE  	mode,
+// 		const TPM2B_IV *  	ivIn,
+// 		const TPM2B_MAX_BUFFER *  	inData,
+// 		TPM2B_MAX_BUFFER **  	outData,
+// 		TPM2B_IV **  	ivOut 
+// 	) 	*/
+//   TSS2_RC(*Esys_EncryptDecrypt) (ESYS_CONTEXT *, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR, 
+//   TPMI_YES_NO, TPMI_ALG_CIPHER_MODE, const TPM2B_IV *, const TPM2B_MAX_BUFFER *, TPM2B_MAX_BUFFER **, TPM2B_IV **) = 
+//   (TSS2_RC(*)(ESYS_CONTEXT *, ESYS_TR, ESYS_TR, ESYS_TR, ESYS_TR, 
+//   TPMI_YES_NO, TPMI_ALG_CIPHER_MODE, const TPM2B_IV *, const TPM2B_MAX_BUFFER *, TPM2B_MAX_BUFFER **, TPM2B_IV **))dlsym(handle, "Esys_EncryptDecrypt");
+
+// // #ifdef TEST_ENCRYPT_DECRYPT2
+// //   LOG_INFO("Test Esys_EncryptDecrypt2");
+// //   r = Esys_EncryptDecrypt2(
+// //       esys_context,
+// //       keyHandle_handle,
+// //       ESYS_TR_PASSWORD,
+// //       ESYS_TR_NONE,
+// //       ESYS_TR_NONE,
+// //       &inData,
+// //       encrypt,
+// //       mode,
+// //       &ivIn,
+// //       &outData,
+// //       &ivOut);
+// // #else
+// //   LOG_INFO("Test Esys_EncryptDecrypt");
+
+//   r = Esys_EncryptDecrypt(
+//       ctx,
+//       keyHandle_handle,
+//       ESYS_TR_PASSWORD,
+//       ESYS_TR_NONE,
+//       ESYS_TR_NONE,
+//       false,
+//       mode,
+//       &ivIn,
+//       &inData,
+//       &outData,
+//       &ivOut);
+
+// // #endif  /* TEST_ENCRYPT_DECRYPT2 */
+
+// // if ((r == TPM2_RC_COMMAND_CODE) ||
+// //     (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+// //     (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
+// //     LOG_WARNING("Command TPM2_EncryptDecrypt not supported by TPM.");
+// //     failure_return = EXIT_SKIP;
+// //     goto error;
+// // }
+
+// // goto_if_error(r, "Error: EncryptDecrypt", error);
+
+// // #ifdef TEST_ENCRYPT_DECRYPT2
+// //     r = Esys_EncryptDecrypt2(
+// //       esys_context,
+// //       keyHandle_handle,
+// //       ESYS_TR_PASSWORD,
+// //       ESYS_TR_NONE,
+// //       ESYS_TR_NONE,
+// //       outData,
+// //       decrypt,
+// //       mode,
+// //       &ivIn,
+// //       &outData2,
+// //       &ivOut2);
+// // #else
+// //   r = Esys_EncryptDecrypt(
+// //       esys_context,
+// //       keyHandle_handle,
+// //       ESYS_TR_PASSWORD,
+// //       ESYS_TR_NONE,
+// //       ESYS_TR_NONE,
+// //       decrypt,
+// //       mode,
+// //       &ivIn,
+// //       outData,
+// //       &outData2,
+// //       &ivOut2);
+// // #endif /* TEST_ENCRYPT_DECRYPT2 */
+
+// //   if ((r == TPM2_RC_COMMAND_CODE) ||
+// //       (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_RC_LAYER)) ||
+// //       (r == (TPM2_RC_COMMAND_CODE | TSS2_RESMGR_TPM_RC_LAYER))) {
+// //       LOG_WARNING("Command TPM2_EncryptDecrypt not supported by TPM.");
+// //       failure_return = EXIT_SKIP;
+// //       goto error;
+// //   }
+
+// //   goto_if_error(r, "Error: EncryptDecrypt", error);
+
+// //   LOGBLOB_DEBUG(&outData2->buffer[0], outData2->size, "** Decrypted data **");
+
+// //   if (outData2->size != inData.size ||
+// //       memcmp(&outData2->buffer, &inData.buffer[0], outData2->size) != 0) {
+// //       LOG_ERROR("Error: decrypted text not  equal to origin");
+// //       goto error;
+// //   }
+
+// if (r != TSS2_RC_SUCCESS) {
+//   printf("\nError in Encrypt Decrypt EncryptDecrypt\nError:%s\n",
+//           strerror(errno));
+//   abort();
+// }
+
+// r = Esys_FlushContext(ctx, primaryHandle);
+
+// if (r != TSS2_RC_SUCCESS) {
+//   printf("\nError in Encrypt Decrypt First FlushContext\nError:%s\n",
+//           strerror(errno));
+//   abort();
+// }
+// primaryHandle = ESYS_TR_NONE;
+
+//   r = Esys_FlushContext(ctx, loadedKeyHandle);
+
+//     if (r != TSS2_RC_SUCCESS) {
+//     printf("\nError in Encrypt Decrypt Second FlushContext\nError:%s\n",
+//             strerror(errno));
+//     abort();
+//   }
 
   // ------------------------------------------------------------------------------------------------
 
