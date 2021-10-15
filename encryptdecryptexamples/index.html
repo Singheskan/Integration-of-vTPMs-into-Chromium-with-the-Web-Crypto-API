@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Web Crypto API example</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+
+  <body>
+    <h1>Web Crypto: encrypt/decrypt</h1>
+    <main>
+      <section class="description">
+        <p>This page shows the use of the <code>encrypt()</code> and <code>decrypt()</code> 
+          functions of the <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API">Web Crypto API</a>. 
+          The Code is an adaption of mdn's dom-examples: <a href="https://github.com/mdn/dom-examples/tree/master/web-crypto">Reference</a></p>
+      </section>
+
+      <section class="examples">
+        <section class="encrypt-decrypt rsa-oaep">
+          <h2 class="encrypt-decrypt-heading">RSA-OAEP</h2>
+          <section class="encrypt-decrypt-controls">
+            <div class="message-control">
+              <label for="rsa-oaep-message">Enter a message to encrypt:</label>
+              <input type="text" id="rsa-oaep-message" name="message" size="25"
+                     value="The owl hoots at midnight">
+            </div>
+            <div class="ciphertext">Ciphertext:<span class="ciphertext-value"></span></div>
+            <div class="decrypted">Decrypted:<span class="decrypted-value"></span></div>
+            <input class="encrypt-button" type="button" value="Encrypt">
+            <input class="decrypt-button" type="button" value="Decrypt">
+          </section>
+        </section>
+
+      </section>
+    </main>
+
+  </body>
+  <script src="rsa-oaep.js"></script>
+</html>
